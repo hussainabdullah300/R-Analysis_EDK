@@ -1,0 +1,574 @@
+---
+title: "R-Analysis_EDK"
+author: "Hussain Abdullah"
+date: "2024-04-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+```{r}
+library(readxl)
+library(dplyr)
+library(fs)
+library(tools)
+library(readr)
+library(data.table)
+library(tidyverse)
+library(ez)
+library(reshape2)
+library(ggpubr)
+library(rstatix)
+source('summarySE.R')
+
+```
+
+```{r}
+span <- function(vec) {
+  diff(range(vec))
+}
+
+```
+
+```{r}
+## To Merge the sheets in one main Demogarph file
+
+# Set working directory
+setwd("D:/EDK_CD/Controlled_Input/Demograph_Sheet")
+
+# Read sheet names from the Excel file
+excel_file <- "Demo.xlsx"
+sheet_names <- excel_sheets(excel_file)
+
+# Read each sheet from the Excel file into a list
+data_list <- lapply(sheet_names, function(sheet) read_excel(excel_file, sheet = sheet))
+
+# Merge all sheets into one dataframe
+Main_Demo_file <- bind_rows(data_list)
+
+# Define the output directory
+output_dir <- "Output"
+
+# Create the output directory if it doesn't exist
+dir_create(output_dir)
+
+# Save merged data as a CSV file in the output directory
+write.csv(Main_Demo_file, file.path(output_dir, "Demograph.csv"), row.names = FALSE)
+
+################################################################
+#listing all Test csv present in D:\EDK_CD\Controlled_Input\PPID
+################################################################
+
+
+# Set the path to the directory
+path <- "D:/EDK_CD/Controlled_Input"
+
+# List all CSV files starting with "test" in subdirectories
+csv_files <- list.files(path, pattern = "^test.csv$", recursive = TRUE, full.names = TRUE)
+
+# Check if any files were found
+if (length(csv_files) == 0) {
+  print("No CSV files starting with 'tes' found.")
+} else {
+  # Print the list of found CSV files
+  print(csv_files)
+}
+
+
+
+#################################################
+## To only consider RT, MT Mt, Etc 
+
+##################################################
+
+
+transpose_remove_third_and_save <- function(file_path) {
+  # Read the CSV file into a data.table
+  dt <- fread(file_path, header = FALSE)
+  
+  # Extract only the required rows
+  required_rows <- c(1, 9, 10, 11, 12)
+  dt_subset <- dt[required_rows, ]
+  
+  # Transpose the subset dataframe
+  dt_subset_t <- t(dt_subset)
+  
+  # Remove the third entry of every column
+  dt_subset_t <- apply(dt_subset_t, 2, function(x) x[-2])
+  
+  # Get the directory path
+  dir_path <- dirname(file_path)
+  
+  # Get the file name without extension
+  file_name <- tools::file_path_sans_ext(basename(file_path))
+  
+  # Define the new file path for saving the subset data
+  new_file_path <- file.path(dir_path, paste0(file_name, "_subset_r.csv"))
+  
+  # Check if the file already exists
+  if (file.exists(new_file_path)) {
+    cat("CSV files are already present with the same requirement\n")
+    return()
+  }
+  
+  # Save the subset data table to a new CSV file
+  write.csv(dt_subset_t, file = new_file_path, row.names = FALSE)
+  
+  cat("Subset of file with third entry removed saved as:", new_file_path, "\n")
+}
+
+# Apply function to each CSV file
+invisible(lapply(csv_files, transpose_remove_third_and_save))
+
+##################################################
+
+## To Mutate folder from left to Right One by one.
+#Manually
+
+##################################################
+
+setwd("D:/EDK_CD/Controlled_Input/PPID")
+
+# Set parent directory
+parent_folder <- "D:/EDK_CD/Controlled_Input/PPID"
+
+
+
+# Set the directory paths
+left_folder <- "D:/EDK_CD/Controlled_Input/PPID/PPID_1/PPID1_Left"
+right_folder <- "D:/EDK_CD/Controlled_Input/PPID/PPID_1/PPID1_Right"
+
+# List folders in the left and right folders
+left_folders <- list.dirs(left_folder, full.names = TRUE, recursive = FALSE)
+right_folders <- list.dirs(right_folder, full.names = TRUE, recursive = FALSE)
+
+# Get the total number of folders in the right folder
+num_right_folders <- length(right_folders)
+
+# Start index for numbering folders in PPID_1_Left
+start_index <- 40
+
+# Rename folders and move files
+for (i in seq_along(left_folders)) {
+  # Extract folder name
+  folder_name <- basename(left_folders[i])
+  # Rename folder to match numbering in PPID_1_Right
+  new_folder_name <- paste0("Record_", start_index + i - 1)
+  # Create new folder path in PPID_1_Right
+  new_right_folder <- file.path(right_folder, new_folder_name)
+  # Create the folder if it doesn't exist
+  if (!file.exists(new_right_folder)) {
+    dir.create(new_right_folder)
+  }
+  # List files in the current left folder
+  left_files <- list.files(left_folders[i], full.names = TRUE)
+  # Move files to corresponding right folder
+  file.rename(left_files, file.path(new_right_folder, basename(left_files)))
+  
+}
+
+
+#############################################
+## Copying PPID in PPID_subset_r while 
+## keeping only right folder 
+#############################################
+
+
+# Source directory
+source_dir <- "D:/EDK_CD/Controlled_Input/PPID"
+
+# Destination directory
+dest_dir <- "D:/EDK_CD/Controlled_Input/PPID_r"
+
+# Create destination directory if it doesn't exist
+if (!file.exists(dest_dir)) {
+  dir.create(dest_dir)
+}
+
+# Copy all files and folders from source directory to destination directory
+file.copy(from = source_dir, to = dest_dir, recursive = TRUE)
+
+
+###################
+#delete left folder
+###################
+
+
+# maunually
+
+##########################################
+## Picking test files From each Right PPID
+## folder so that 80*15=1200
+##########################################
+
+
+setwd("D:/EDK_CD/Controlled_Input/PPID_r")
+
+
+# Function to list all files with a specific name pattern in subfolders
+list_files <- function(directory, pattern) {
+  files <- list.files(path = directory, recursive = TRUE, pattern = pattern, full.names = TRUE)
+  return(files)
+}
+
+# List all subdirectories in the main directory
+subdirectories <- list.dirs(".", recursive = FALSE)
+
+# Initialize an empty list to store data frames
+dfs <- list()
+
+# Loop through each subdirectory
+for (subdir in subdirectories) {
+  # Find all CSV files with the specified name pattern in the current subdirectory
+  csv_files <- list_files(directory = subdir, pattern = "test_subset_r.csv")
+  
+  # Read all CSV files into a list
+  sub_dfs <- lapply(csv_files, read_csv)
+  
+  # Store data frames in the list
+  dfs <- c(dfs, sub_dfs)
+}
+
+
+
+
+#function to list all files with a specific name pattern in subfolders
+list_files <- function(directory, pattern) {
+  files <- list.files(path = directory, recursive = TRUE, pattern = pattern, full.names = TRUE)
+  return(files)
+}
+
+# Find all CSV files with the specified name pattern in subfolders
+csv_files <- list_files(directory = ".", pattern = "test_subset_r.csv")
+
+# Read all CSV files into a list and add ppid column
+dfs <- lapply(csv_files, function(file) {
+  ppid <- gsub(".*PPID_(\\d+).*", "\\1", file)
+  df <- read_csv(file)
+  df$ppid <- ppid
+  return(df)
+})
+
+
+
+
+
+####################saving dfs ################
+# Combine all data frames into one data frame
+###############################################
+setwd("D:/EDK_CD/Controlled_Input")
+
+combined_df <- do.call(rbind, dfs)
+
+# Select the required columns
+final_df <- combined_df %>%
+  select(ppid,V3,V4,V5)
+
+# Write the final data frame to a CSV file
+write.csv(final_df, file = "PPID_final.csv", row.names = TRUE)
+
+###############################################
+## removing Rt , and etc from every file
+###############################################
+library(tidyverse)
+# Set the file path
+file_path <- "D:/EDK_CD/Controlled_Input/PPID_final.csv"
+
+# Read the CSV file
+data <- read_csv(file_path)
+
+# Remove rows containing specified variables
+data_filtered <- data %>%
+  filter(!(V3 == "RT" | V4 == "MT_to_obj" | V5 == "MT_obj_to_tar"))
+
+# Write the filtered data back to the CSV file
+write_csv(data_filtered, file_path)
+
+# Optional: Print the first few rows of the filtered data
+print(head(data_filtered))
+
+
+
+
+######################
+# same removing 
+#######################
+# Set the file paths
+input_file <- "D:/EDK_CD/Controlled_Input/PPID_final.csv"
+output_file <- "D:/EDK_CD/Controlled_Input/PPID_records.csv"
+
+# Read the CSV file
+data <- read_csv(input_file)
+
+# Remove rows containing specified variables
+data_filtered <- data %>%
+  filter(!(V3 == "RT" | V3 == "MT_to_obj" | V3 == "MT_obj_to_tar"))
+
+# Write the filtered data to a new CSV file
+write_csv(data_filtered, output_file)
+
+# Optional: Print the first few rows of the filtered data
+print(head(data_filtered))
+
+##############################
+## Renaming v2 v3 v4
+#############################
+
+input_file <- "D:/EDK_CD/Controlled_Input/PPID_records.csv"
+output_file <- "D:/EDK_CD/Controlled_Input/PPID_records_f.csv"
+# Read the CSV file
+data <- read_csv(input_file)
+
+# Remove the first column
+data <- select(data, -1)
+
+# Rename the columns
+colnames(data)[2:4] <- c("RT", "MT_to_obj", "MT_obj_to_tar")
+
+# Write the renamed data to a new CSV file
+write_csv(data, output_file)
+
+# Optional: Print the first few rows of the renamed data
+print(head(data))
+
+
+
+
+###################################
+## Left join on the basis of PPID  of Demographs 
+## and PPID_records_f file
+
+#####################################
+
+# Read the first CSV file
+df1 <- read.csv("Demograph.csv")
+
+# Introduce a new column "Sr.no" with numbering
+df1$Sr.no <- seq.int(nrow(df1))
+
+# Read the second CSV file
+df2 <- read.csv("PPID_records_f.csv")
+
+# Introduce a new column "Sr.no" with numbering
+df2$Sr.no <- seq.int(nrow(df2))
+
+# Perform a left join based on the "Sr.no" column
+merged_df <- merge(df1, df2, by = "Sr.no", all.x = TRUE)
+# Save merged dataframe to CSV
+write.csv(merged_df, file = "Controlled_EDK_Dataset.csv", row.names = FALSE)
+
+
+#####################################
+# Remove ppid.y column
+#####################################
+merged_df <- merged_df[, !grepl("^ppid\\.y", names(merged_df))]
+
+# Rename ppid.x column to ppid
+names(merged_df)[which(names(merged_df) == "ppid.x")] <- "ppid"
+
+# Save the modified dataframe to CSV
+write.csv(merged_df, file = "Controlled_EDK_Dataset.csv", row.names = FALSE)
+
+
+```
+
+
+
+
+
+```{r}
+setwd("D:/Final year project/EDK/EDK_CD/Controlled_Input")
+
+kit_summ <- read_csv('Controlled_EDK_Dataset.csv') %>%
+  group_by(ppid, Hand) %>% 
+  mutate(trial_num = Sr.no - min(Sr.no)) %>% 
+  select(-Sr.no) %>% 
+  select(trial_num, everything()) %>%
+  ungroup() %>%
+  data_frame()
+
+head(kit_summ)
+
+```
+
+```{r}
+kit_summ <- kit_summ %>%
+  ungroup() %>%
+  mutate(trial_num = factor(trial_num),
+         Grasp.size = factor(Grasp.size),
+         Base.hole = factor(Base.hole),
+         ppid = factor(ppid))
+
+```
+
+```{r}
+kit_summary <- kit_summ %>%
+  mutate_at(vars(Grasp.size), funs(ifelse(Grasp.size == "small", 10, 30))) %>%
+  mutate_at(vars(Base.hole), funs(ifelse(Base.hole == "small", 10, 20)))
+
+```
+
+```{r}
+RT_res.ezaov <- ezANOVA(kit_summ,
+                     dv = RT, # specify dependent variable
+                     wid = ppid, # specify the subject variable
+                     within = .(Grasp.size, Base.hole, Hand),
+                     type = 3, detailed = TRUE, return_aov = TRUE)
+
+get_anova_table(RT_res.ezaov$ANOVA)
+
+```
+
+
+```{r}
+RT_se <- summarySE(kit_summary, measurevar="RT", groupvars=c("Grasp.size", "Base.hole", "Hand"))
+
+```
+
+```{r}
+RT.grip_hand <- kit_summary %>%
+  group_by(Grasp.size, Base.hole) %>%
+  tukey_hsd(RT ~ Hand)
+RT.grip_hand
+
+```
+
+
+```{r}
+pd <- position_dodge(1)
+ggplot(RT_se , aes(x=as.factor(Hand), y=RT)) +   
+  geom_errorbar(aes(ymin=(RT - sd), ymax=(RT + sd)),
+                size=1, width=.3, position=pd) +
+  geom_line(position=pd) +
+  geom_point(position=pd, size=3, shape=21, fill="white") +
+  facet_grid(Grasp.size ~ Base.hole) +
+  theme_bw()
+
+```
+
+
+```{r}
+pd <- position_dodge(0.3)
+
+ggplot(RT_se, aes(x = as.factor(Grasp.size), y = RT * 1000, colour = Hand, group = Hand, linetype = Hand)) + 
+  geom_errorbar(aes(ymin = (RT - sd) * 1000, ymax = (RT + sd) * 1000, colour = Hand), size = 1, width = .3, position = pd) +
+  geom_line(position = pd) +
+  geom_point(position = pd, size = 3, shape = 21, fill = "white") +
+  xlab("Grip") +
+  ylab("Reaction Time (ms)") +
+  scale_colour_hue(name = "Hand", breaks = c("Left", "Right"), labels = c("Left", "Right"), l = 40) +
+  expand_limits(y = 0) +
+  scale_y_continuous(breaks = seq(0, 1000, 100)) +
+  theme_bw() +
+  facet_grid(~Base.hole) +
+  theme(strip.background = element_rect(color = 'black', fill = 'NA', size = 1.2)) +
+  theme(panel.background = element_rect(color = 'black', fill = 'NA', size = 1.2)) +
+  labs(color = "Hand", linetype = "Hand", group = "Hand") +
+  theme(legend.box.just = "left", legend.justification = c(0.98, 0.1), legend.position = c(0.98, 0.1)) +
+  theme(legend.box.just = "left", legend.justification = c(0.98, 0.1), legend.position = c(0.98, 0.1))
+
+# If you don't have 'Hand' variable in RT_se, modify the code accordingly
+
+ggsave('graphs/box_RT.png', type = 'cairo', width = 6, height = 6, dpi = 600)
+
+
+```
+```{r}
+# Convert variables to factors if necessary
+kit_summary$Grasp.size <- factor(kit_summary$Grasp.size)
+kit_summary$Base.hole <- factor(kit_summary$Base.hole)
+kit_summary$Hand <- factor(kit_summary$Hand)
+
+# Check for missing data (optional)
+# kit_summary <- na.omit(kit_summary)
+
+# Perform Tukey's HSD test
+MT.grip_hand <- kit_summary %>%
+  group_by(Hand, Base.hole) %>%
+  tukey_hsd(MT_obj_to_tar ~ Grasp.size)
+
+# Print the results
+print(MT.grip_hand)
+
+```
+
+
+```{r}
+# Ensure Grasp.size is a factor
+kit_summary$Grasp.size <- as.factor(kit_summary$Grasp.size)
+
+# Check for missing data (optional)
+# kit_summary <- na.omit(kit_summary)
+
+# Perform the analysis again
+reach.grip_hand <- kit_summary %>%
+  group_by(Hand, Base.hole) %>%
+  tukey_hsd(MT_obj_to_tar ~ Grasp.size)
+reach.grip_hand
+
+# Compute summary statistics
+reach_se <- summarySE(kit_summary, measurevar = "MT_obj_to_tar", groupvars = c("Grasp.size", "Base.hole", "Hand"))
+
+# Plotting
+pd <- position_dodge(0.3)
+ggplot(reach_se, aes(x = as.factor(Grasp.size), y = MT_obj_to_tar * 1000, colour = Hand, group = Hand, linetype = Hand)) + 
+  geom_errorbar(aes(ymin = (MT_obj_to_tar - sd) * 1000, ymax = (MT_obj_to_tar + sd) * 1000, colour = Hand), size = 1, width = .3, position = pd) +
+  geom_line(position = pd) +
+  geom_point(position = pd, size = 3, shape = 21, fill = "white") +
+  xlab("Grip Size") +
+  ylab("Reaching Time (ms)") +
+  scale_colour_hue(name = "Hand", breaks = c("L", "R"), labels = c("L", "R"), l = 40) +
+  expand_limits(y = 0) +
+  scale_y_continuous(breaks = seq(0, 10000, 500)) +
+  theme_bw() +
+  facet_grid(~Base.hole) +
+  theme(strip.background = element_rect(color = 'black', fill = 'NA', size = 1.2)) +
+  theme(panel.background = element_rect(color = 'black', fill = 'NA', size = 1.2)) +
+  stat_pvalue_manual(reach.grip_hand, label = "p.adj.signif",
+                     y.position = c(3700, 3700, 4000, 4000),
+                     xmin = "group1", xmax = "group2", tip.length = 0,
+                     step.group.by = "Hand", linetype = "Hand",
+                     color = "Hand", position = pd) +
+  labs(color = "Hand", linetype = "Hand", group = "Hand") +
+  theme(legend.box.just = "left", legend.justification = c(0.98, 0.1), legend.position = c(0.98, 0.1))
+
+# Save the plot
+ggsave('graphs/box_reach_time.png', type = 'cairo', width = 6, height = 6, dpi = 600)
+
+```
+```{r}
+# Compute summary statistics with correct column name
+reach_se <- summarySE(kit_summary, measurevar = "MT_obj_to_tar", groupvars = c("Grasp.size", "Base.hole", "Hand"))
+
+```
+
+```{r}
+# Plotting with correct column name
+ggplot(reach_se, aes(x = as.factor(Grasp.size), y = MT_obj_to_tar * 1000, colour = Hand, group = Hand, linetype = Hand)) + 
+  geom_errorbar(aes(ymin = (MT_obj_to_tar - sd) * 1000, ymax = (MT_obj_to_tar + sd) * 1000, colour = Hand), size = 1, width = .3, position = pd) +
+  geom_line(position = pd) +
+  geom_point(position = pd, size = 3, shape = 21, fill = "white") +
+  xlab("Grip Size") +
+  ylab("Reaching Time (ms)") +
+  scale_colour_hue(name = "Hand", breaks = c("L", "R"), labels = c("L", "R"), l = 40) +
+  expand_limits(y = 0) +
+  scale_y_continuous(breaks = seq(0, 10000, 500)) +
+  theme_bw() +
+  facet_grid(~Base.hole) +
+  theme(strip.background = element_rect(color = 'black', fill = 'NA', size = 1.2)) +
+  theme(panel.background = element_rect(color = 'black', fill = 'NA', size = 1.2)) +
+  stat_pvalue_manual(reach.grip_hand, label = "p.adj.signif",
+                     y.position = c(3700, 3700, 4000, 4000),
+                     xmin = "group1", xmax = "group2", tip.length = 0,
+                     step.group.by = "Hand", linetype = "Hand",
+                     color = "Hand", position = pd) +
+  labs(color = "Hand", linetype = "Hand", group = "Hand") +
+  theme(legend.box.just = "left", legend.justification = c(0.98, 0.1), legend.position = c(0.98, 0.1))
+
+# Save the plot
+ggsave('graphs/box_reach_time.png', type = 'cairo', width = 6, height = 6, dpi = 600)
+
+```
+
